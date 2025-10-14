@@ -1,0 +1,117 @@
+{"properties": [
+  {
+    "name": "jwt.secret",
+    "type": "java.lang.String",
+    "description": "A description for 'jwt.secret'"
+  },
+  {
+    "name": "jwt.expiration",
+    "type": "java.lang.String",
+    "description": "A description for 'jwt.expiration'"
+  },
+  {
+    "name": "crypto.aes.key-size",
+    "type": "java.lang.String",
+    "description": "A description for 'crypto.aes.key-size'"
+  },
+  {
+    "name": "crypto.rsa.key-size",
+    "type": "java.lang.String",
+    "description": "A description for 'crypto.rsa.key-size'"
+  },
+  {
+    "name": "cors.allowed.origins",
+    "type": "java.lang.String",
+    "description": "A description for 'cors.allowed.origins'"
+  },
+  {
+    "name": "cors.allowed.headers",
+    "type": "java.lang.String",
+    "description": "A description for 'cors.allowed.headers'"
+  },
+  {
+    "name": "cors.exposed.headers",
+    "type": "java.lang.String",
+    "description": "A description for 'cors.exposed.headers'"
+  },
+  {
+    "name": "cors.allow.credentials",
+    "type": "java.lang.String",
+    "description": "A description for 'cors.allow.credentials'"
+  },
+  {
+    "name": "cors.max.age",
+    "type": "java.lang.String",
+    "description": "A description for 'cors.max.age'"
+  },
+  {
+    "name": "cors.allowed.methods",
+    "type": "java.lang.String",
+    "description": "A description for 'cors.allowed.methods'"
+  },
+  {
+    "name": "springdoc.api-docs.path",
+    "type": "java.lang.String",
+    "description": "A description for 'springdoc.api-docs.path'"
+  },
+  {
+    "name": "springdoc.swagger-ui.path",
+    "type": "java.lang.String",
+    "description": "A description for 'springdoc.swagger-ui.path'"
+  },
+  {
+    "name": "springdoc.swagger-ui.operationsSorter",
+    "type": "java.lang.String",
+    "description": "A description for 'springdoc.swagger-ui.operationsSorter'"
+  },
+  {
+    "name": "springdoc.swagger-ui.tagsSorter",
+    "type": "java.lang.String",
+    "description": "A description for 'springdoc.swagger-ui.tagsSorter'"
+  },
+  {
+    "name": "springdoc.swagger-ui.operationsSorter",
+    "type": "java.lang.String",
+    "description": "A description for 'springdoc.swagger-ui.operationsSorter'"
+  },
+  {
+    "name": "system.encryption.key",
+    "type": "java.lang.String",
+    "description": "A description for 'system.encryption.key'"
+  },
+  {
+    "name": "management.endpoints.web.exposure.include",
+    "type": "java.lang.String",
+    "description": "A description for 'management.endpoints.web.exposure.include'"
+  },
+  {
+    "name": "management.endpoint.health.show-details",
+    "type": "java.lang.String",
+    "description": "A description for 'management.endpoint.health.show-details'"
+  },
+  {
+    "name": "management.info.env.enabled",
+    "type": "java.lang.String",
+    "description": "A description for 'management.info.env.enabled'"
+  },
+  {
+    "name": "management.health.diskspace.enabled",
+    "type": "java.lang.String",
+    "description": "A description for 'management.health.diskspace.enabled'"
+  },
+  {
+    "name": "management.health.db.enabled",
+    "type": "java.lang.String",
+    "description": "A description for 'management.health.db.enabled'"
+  },
+  {
+    "name": "jwt.refresh-expiration",
+    "type": "java.lang.String",
+    "description": "A description for 'jwt.refresh-expiration'"
+  },
+  {
+    "name": "crypto.dh.key-size",
+    "type": "java.lang.String",
+    "description": "A description for 'crypto.dh.key-size'"
+  }
+]}
