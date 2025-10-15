@@ -28,19 +28,62 @@ public class MessageController {
 
     // ==================== ENVIO DE MENSAGENS ====================
 
-    @Operation(summary = "Enviar mensagem encriptada PGP", description = "Envia mensagem com criptografia PGP (RSA + AES) e SHA-256")
+    @Operation(summary = "Enviar mensagem encriptada PGP", description = "Envia mensagem com criptografia PGP automática (RSA + AES) e SHA-256")
     @PostMapping("/send/encrypted")
     public ResponseEntity<?> sendEncryptedMessage(@RequestBody MessageDTO messageDTO) {
         try {
+            System.out.println("📨 Recebendo mensagem para envio criptografado: " + messageDTO);
+
+            // ✅ VALIDAÇÃO EXPLÍCITA E DETALHADA
+            if (messageDTO.getSenderId() == null) {
+                return ResponseEntity.badRequest().body(Map.of(
+                        "success", false,
+                        "error", "senderId é obrigatório",
+                        "field", "senderId",
+                        "code", "MISSING_SENDER_ID"));
+            }
+
+            if (messageDTO.getReceiverId() == null) {
+                return ResponseEntity.badRequest().body(Map.of(
+                        "success", false,
+                        "error", "receiverId é obrigatório",
+                        "field", "receiverId",
+                        "code", "MISSING_RECEIVER_ID"));
+            }
+
+            if (messageDTO.getContent() == null || messageDTO.getContent().trim().isEmpty()) {
+                return ResponseEntity.badRequest().body(Map.of(
+                        "success", false,
+                        "error", "content é obrigatório",
+                        "field", "content",
+                        "code", "MISSING_CONTENT"));
+            }
+
+            // ✅ GARANTIR QUE O TIPO DE MENSAGEM ESTÁ DEFINIDO
+            if (messageDTO.getMessageType() == null) {
+                messageDTO.setMessageType("TEXT");
+            }
+
+            System.out.println("✅ Dados validados - Processando mensagem...");
+
+            // ✅ DELEGAR PARA O SERVICE (decide automaticamente sobre criptografia)
             MessageDTO sentMessage = messageService.sendEncryptedMessage(messageDTO);
+
+            System.out.println("✅ Mensagem processada com sucesso - ID: " + sentMessage.getId());
+
             return ResponseEntity.ok(Map.of(
                     "success", true,
-                    "message", "Mensagem PGP enviada com sucesso",
+                    "message", "Mensagem processada com sucesso",
                     "data", sentMessage));
+
         } catch (Exception e) {
+            System.err.println("❌ Erro ao processar mensagem: " + e.getMessage());
+            e.printStackTrace();
+
             return ResponseEntity.badRequest().body(Map.of(
                     "success", false,
-                    "error", e.getMessage()));
+                    "error", e.getMessage(),
+                    "code", "PROCESSING_ERROR"));
         }
     }
 
@@ -84,7 +127,6 @@ public class MessageController {
     // ==================== DECRIPTAÇÃO DE MENSAGENS ====================
 
     @Operation(summary = "Descriptografar mensagem PGP", description = "Descriptografa mensagem PGP usando chave privada")
-    // No MessageController.java - Adicionar no método decryptMessage
     @PostMapping("/{messageId}/decrypt")
     public ResponseEntity<?> decryptMessage(
             @PathVariable Long messageId,
@@ -95,6 +137,14 @@ public class MessageController {
             System.out
                     .println("🎯 Recebida requisição de decriptação - MessageId: " + messageId + ", UserId: " + userId);
             System.out.println("📦 Request body: " + request);
+
+            // ✅ VALIDAÇÃO DE PERMISSÕES
+            if (userId == null) {
+                return ResponseEntity.badRequest().body(Map.of(
+                        "success", false,
+                        "error", "userId é obrigatório",
+                        "code", "MISSING_USER_ID"));
+            }
 
             String decryptedContent = messageService.decryptMessage(messageId, userId);
 
