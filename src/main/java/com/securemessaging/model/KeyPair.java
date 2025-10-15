@@ -20,11 +20,11 @@ public class KeyPair {
     @Column(columnDefinition = "TEXT")
     private String privateKey;
 
-    private String algorithm; // RSA, DH, etc.
-    private int keySize; // 1024, 2048, etc.
+    private String algorithm;
+    private int keySize; 
 
     @Enumerated(EnumType.STRING)
-    private KeyType keyType; // ENCRYPTION, SIGNATURE, KEY_EXCHANGE
+    private KeyType keyType; 
 
     private LocalDateTime createdAt;
     private LocalDateTime expiresAt;
