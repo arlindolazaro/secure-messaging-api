@@ -47,6 +47,7 @@ public class MessageService {
     @Autowired
     private SimpMessagingTemplate messagingTemplate;
 
+    // No MessageService.java - Método corrigido
     @Transactional
     public MessageDTO sendEncryptedMessage(MessageDTO messageDTO) throws Exception {
         if (messageDTO.getSenderId() == null || messageDTO.getReceiverId() == null) {
@@ -59,25 +60,23 @@ public class MessageService {
                 .orElseThrow(() -> new IllegalArgumentException("Destinatário não encontrado"));
 
         String finalContent;
-        boolean isEncrypted = messageDTO.isEncrypted();
-        String messageHash = messageDTO.getMessageHash();
+        boolean isEncrypted = false;
+        String messageHash = null;
 
-        if (isEncrypted && messageDTO.getContent() != null) {
-            finalContent = messageDTO.getContent();
-            if (messageHash == null) {
-                messageHash = cryptoService.hashWithSHA256(messageDTO.getContent());
-            }
-        } else if (receiver.getPublicKey() != null && !isEncrypted && messageDTO.getContent() != null) {
+        // ✅ LÓGICA CORRIGIDA: Sempre criptografar se o destinatário tiver chave pública
+        if (receiver.getPublicKey() != null && messageDTO.getContent() != null) {
             PublicKey receiverPublicKey = cryptoService.stringToPublicKey(receiver.getPublicKey());
             finalContent = cryptoService.encryptPGPStyle(messageDTO.getContent(), receiverPublicKey);
             isEncrypted = true;
-            messageHash = cryptoService.hashWithSHA256(messageDTO.getContent());
+            messageHash = cryptoService.hashWithSHA256(messageDTO.getContent()); // Hash do original
+            System.out.println("✅ Mensagem criptografada para o destinatário: " + receiver.getUsername());
         } else {
             finalContent = messageDTO.getContent();
             isEncrypted = false;
-            if (messageHash == null && messageDTO.getContent() != null) {
+            if (messageDTO.getContent() != null) {
                 messageHash = cryptoService.hashWithSHA256(messageDTO.getContent());
             }
+            System.out.println("ℹ️ Mensagem enviada em texto normal");
         }
 
         Message message = new Message();
@@ -90,12 +89,13 @@ public class MessageService {
         message.setSentAt(LocalDateTime.now());
         message.setStatus(Message.MessageStatus.SENT);
 
+        // ✅ Assinatura digital (opcional)
         if (messageDTO.isSigned() && sender.getPrivateKey() != null && messageDTO.getContent() != null) {
             PrivateKey senderPrivateKey = cryptoService.stringToPrivateKey(sender.getPrivateKey());
-            String contentToSign = isEncrypted && !messageDTO.isEncrypted() ? messageDTO.getContent() : finalContent;
-            String signature = cryptoService.signData(contentToSign, senderPrivateKey);
+            String signature = cryptoService.signData(messageDTO.getContent(), senderPrivateKey);
             message.setSignature(signature);
             message.setSigned(true);
+            System.out.println("✅ Mensagem assinada digitalmente");
         }
 
         Message saved = messageRepository.save(message);
