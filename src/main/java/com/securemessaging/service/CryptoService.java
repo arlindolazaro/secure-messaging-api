@@ -14,6 +14,7 @@ import javax.crypto.KeyAgreement;
 import javax.crypto.KeyGenerator;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.IvParameterSpec;
+import javax.crypto.spec.DHParameterSpec;
 import javax.crypto.spec.GCMParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 import java.math.BigInteger;
@@ -101,6 +102,18 @@ public class CryptoService {
         } catch (Exception e) {
             throw new IllegalArgumentException("String de chave em formato inválido: " + e.getMessage());
         }
+    }
+
+    /**
+     * Extrai Base64 de formato PEM
+     */
+    public String extractBase64FromPEM(String pemString) {
+        if (pemString == null)
+            return null;
+        return pemString
+                .replaceAll("-----BEGIN [A-Z ]+ KEY-----", "")
+                .replaceAll("-----END [A-Z ]+ KEY-----", "")
+                .replaceAll("[\\r\\n\\s]", "");
     }
 
     // ========================= X500Name / Cert generation
@@ -201,7 +214,7 @@ public class CryptoService {
 
     public KeyPair generateRSAKeyPair() throws NoSuchAlgorithmException {
         KeyPairGenerator keyGen = KeyPairGenerator.getInstance("RSA");
-        keyGen.initialize(1024);
+        keyGen.initialize(1024); // ✅ 1024 bits conforme requisito I.a
         return keyGen.generateKeyPair();
     }
 
@@ -214,24 +227,22 @@ public class CryptoService {
     public KeyPair generateDHKeyPair() throws Exception {
         KeyPairGenerator keyGen = KeyPairGenerator.getInstance("DH");
 
-        byte[] seed = new byte[16];
-        SecureRandom strongRnd;
-        try {
-            strongRnd = SecureRandom.getInstanceStrong();
-        } catch (Exception ex) {
-            strongRnd = new SecureRandom();
-        }
+        // ✅ PRNG de 128 bits (requisito I.d)
+        byte[] seed = new byte[16]; // 128 bits
+        SecureRandom strongRnd = SecureRandom.getInstanceStrong();
         strongRnd.nextBytes(seed);
 
-        SecureRandom seededRnd;
-        try {
-            seededRnd = SecureRandom.getInstance("SHA1PRNG");
-            seededRnd.setSeed(seed);
-        } catch (Exception ex) {
-            seededRnd = new SecureRandom(seed);
-        }
+        SecureRandom seededRnd = SecureRandom.getInstance("SHA1PRNG");
+        seededRnd.setSeed(seed);
 
-        keyGen.initialize(1024, seededRnd);
+        // ✅ Grupo DH padrão (1024 bits)
+        DHParameterSpec dhParamSpec = new DHParameterSpec(
+                new BigInteger(
+                        "FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD129024E088A67CC74020BBEA63B139B22514A08798E3404DDEF9519B3CD3A431B302B0A6DF25F14374FE1356D6D51C245E485B576625E7EC6F44C42E9A637ED6B0BFF5CB6F406B7EDEE386BFB5A899FA5AE9F24117C4B1FE649286651ECE65381FFFFFFFFFFFFFFFF",
+                        16),
+                new BigInteger("2"));
+
+        keyGen.initialize(dhParamSpec, seededRnd);
         return keyGen.generateKeyPair();
     }
 
@@ -291,23 +302,29 @@ public class CryptoService {
     // ========================= PGP-style hybrid: encrypt -> JSON
     // =========================
     public String encryptPGPStyle(String data, PublicKey publicKey) throws Exception {
+        // ✅ Usar AES-128 conforme padrão PGP
         KeyGenerator keyGen = KeyGenerator.getInstance("AES");
-        keyGen.init(128);
+        keyGen.init(128); // ✅ 128 bits para chave simétrica
         SecretKey sessionKey = keyGen.generateKey();
 
-        Cipher aesCipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
-        aesCipher.init(Cipher.ENCRYPT_MODE, sessionKey);
-        byte[] iv = aesCipher.getIV();
+        // ✅ AES/GCM/NoPadding para melhor segurança
+        Cipher aesCipher = Cipher.getInstance("AES/GCM/NoPadding");
+        byte[] iv = new byte[12]; // GCM recomenda 12 bytes
+        new SecureRandom().nextBytes(iv);
+        aesCipher.init(Cipher.ENCRYPT_MODE, sessionKey, new GCMParameterSpec(128, iv));
         byte[] encryptedData = aesCipher.doFinal(data.getBytes("UTF-8"));
 
-        Cipher rsaCipher = Cipher.getInstance("RSA/ECB/PKCS1Padding");
+        // ✅ RSA/ECB/OAEPWithSHA-256AndMGF1Padding para compatibilidade
+        Cipher rsaCipher = Cipher.getInstance("RSA/ECB/OAEPWithSHA-256AndMGF1Padding");
         rsaCipher.init(Cipher.ENCRYPT_MODE, publicKey);
         byte[] encryptedSessionKey = rsaCipher.doFinal(sessionKey.getEncoded());
 
+        // ✅ SHA-256 para integridade (requisito I.c)
         String hash = hashWithSHA256(data);
 
+        // ✅ Estrutura JSON padronizada
         String json = String.format(
-                "{\"encryptedKey\":\"%s\",\"iv\":\"%s\",\"ciphertext\":\"%s\",\"hash\":\"%s\"}",
+                "{\"encryptedKey\":\"%s\",\"iv\":\"%s\",\"ciphertext\":\"%s\",\"hash\":\"%s\",\"algorithm\":\"PGP-RSA-AES\"}",
                 Base64.getEncoder().encodeToString(encryptedSessionKey),
                 Base64.getEncoder().encodeToString(iv),
                 Base64.getEncoder().encodeToString(encryptedData),
@@ -322,143 +339,54 @@ public class CryptoService {
                 throw new IllegalArgumentException("Dados criptografados é nulo");
             }
 
-            String input = encryptedData.trim();
-            if (input.length() >= 2 && input.startsWith("\"") && input.endsWith("\"")) {
-                input = input.substring(1, input.length() - 1).trim();
+            // ✅ Parsing consistente do JSON
+            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            com.fasterxml.jackson.databind.JsonNode node = mapper.readTree(encryptedData);
+
+            if (!node.has("encryptedKey") || !node.has("iv") || !node.has("ciphertext")) {
+                throw new IllegalArgumentException("Formato PGP inválido - campos obrigatórios em falta");
             }
 
-            // 1) Tentar parsing JSON
+            String encryptedKeyB64 = node.get("encryptedKey").asText();
+            String ivB64 = node.get("iv").asText();
+            String ciphertextB64 = node.get("ciphertext").asText();
+            String hashB64 = node.has("hash") ? node.get("hash").asText() : null;
+
+            byte[] encryptedKeyBytes = Base64.getDecoder().decode(encryptedKeyB64);
+            byte[] ivBytes = Base64.getDecoder().decode(ivB64);
+            byte[] ciphertextBytes = Base64.getDecoder().decode(ciphertextB64);
+
+            // ✅ Tentar apenas OAEPWithSHA-256 para consistência
+            byte[] sessionKeyBytes;
             try {
-                com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
-                com.fasterxml.jackson.databind.JsonNode node = mapper.readTree(input);
-                if (node.has("encryptedKey") && node.has("iv") && node.has("ciphertext")) {
-                    String encryptedKeyB64 = node.get("encryptedKey").asText();
-                    String ivB64 = node.get("iv").asText();
-                    String ciphertextB64 = node.get("ciphertext").asText();
-                    String hashB64 = node.has("hash") ? node.get("hash").asText() : null;
-
-                    byte[] encryptedKeyBytes = Base64.getDecoder().decode(encryptedKeyB64);
-                    byte[] ivBytes = Base64.getDecoder().decode(ivB64);
-                    byte[] ciphertextBytes = Base64.getDecoder().decode(ciphertextB64);
-
-                    byte[] sessionKeyBytes = null;
-                    Exception lastEx = null;
-
-                    // Tentar diferentes métodos de decriptação RSA
-                    String[] rsaMethods = {
-                            "RSA/ECB/OAEPWithSHA-256AndMGF1Padding",
-                            "RSA/ECB/OAEPWithSHA-1AndMGF1Padding",
-                            "RSA/ECB/PKCS1Padding"
-                    };
-
-                    for (String method : rsaMethods) {
-                        try {
-                            Cipher rsaCipher = Cipher.getInstance(method);
-                            rsaCipher.init(Cipher.DECRYPT_MODE, privateKey);
-                            sessionKeyBytes = rsaCipher.doFinal(encryptedKeyBytes);
-                            lastEx = null;
-                            break;
-                        } catch (Exception ex) {
-                            lastEx = ex;
-                        }
-                    }
-
-                    if (sessionKeyBytes == null) {
-                        throw new RuntimeException(
-                                "Falha ao decriptar chave RSA (tentadas OAEP-SHA256, OAEP-SHA1, PKCS1)", lastEx);
-                    }
-
-                    SecretKey sessionKey = new SecretKeySpec(sessionKeyBytes, "AES");
-
-                    // Tentar AES-GCM primeiro (iv 12 bytes)
-                    if (ivBytes != null && ivBytes.length == 12) {
-                        try {
-                            Cipher aesGcm = Cipher.getInstance("AES/GCM/NoPadding");
-                            GCMParameterSpec gcmSpec = new GCMParameterSpec(128, ivBytes);
-                            aesGcm.init(Cipher.DECRYPT_MODE, sessionKey, gcmSpec);
-                            byte[] plain = aesGcm.doFinal(ciphertextBytes);
-                            String result = new String(plain, "UTF-8");
-
-                            if (hashB64 != null) {
-                                String calculated = hashWithSHA256(result);
-                                if (!calculated.equals(hashB64)) {
-                                    throw new SecurityException("Falha na verificação de integridade (hash mismatch)");
-                                }
-                            }
-                            return result;
-                        } catch (Exception e) {
-                            // Fall through to CBC
-                        }
-                    }
-
-                    // Usar AES-CBC (iv 16 bytes)
-                    if (ivBytes != null && ivBytes.length == 16) {
-                        Cipher aesCbc = Cipher.getInstance("AES/CBC/PKCS5Padding");
-                        aesCbc.init(Cipher.DECRYPT_MODE, sessionKey, new IvParameterSpec(ivBytes));
-                        byte[] plain = aesCbc.doFinal(ciphertextBytes);
-                        String result = new String(plain, "UTF-8");
-                        if (hashB64 != null) {
-                            String calculated = hashWithSHA256(result);
-                            if (!calculated.equals(hashB64)) {
-                                throw new SecurityException("Falha na verificação de integridade (hash mismatch)");
-                            }
-                        }
-                        return result;
-                    }
-
-                    throw new IllegalArgumentException(
-                            "IV com tamanho inesperado: " + (ivBytes == null ? "null" : ivBytes.length));
-                }
-            } catch (com.fasterxml.jackson.core.JsonProcessingException jpe) {
-                // Não é JSON, tentar formato legado
+                Cipher rsaCipher = Cipher.getInstance("RSA/ECB/OAEPWithSHA-256AndMGF1Padding");
+                rsaCipher.init(Cipher.DECRYPT_MODE, privateKey);
+                sessionKeyBytes = rsaCipher.doFinal(encryptedKeyBytes);
+            } catch (Exception e) {
+                throw new RuntimeException("Falha ao decriptar chave RSA com OAEP-SHA256", e);
             }
 
-            // 2) Formato legado
-            String base64Clean = encryptedData.replaceAll("[\\r\\n\\s\"]", "").trim();
-
-            if (!isValidBase64(base64Clean))
-                throw new IllegalArgumentException("Formato Base64 inválido");
-
-            byte[] data = Base64.getDecoder().decode(base64Clean);
-
-            int rsaKeyBytes = 128;
-            if (privateKey instanceof java.security.interfaces.RSAPrivateKey) {
-                java.security.interfaces.RSAPrivateKey rsaPriv = (java.security.interfaces.RSAPrivateKey) privateKey;
-                rsaKeyBytes = (rsaPriv.getModulus().bitLength() + 7) / 8;
-            }
-
-            int headerLen = 16 + rsaKeyBytes;
-            if (data.length <= headerLen)
-                throw new IllegalArgumentException("Dados criptografados muito curtos");
-
-            byte[] iv = new byte[16];
-            System.arraycopy(data, 0, iv, 0, 16);
-
-            byte[] encryptedSessionKey = new byte[rsaKeyBytes];
-            System.arraycopy(data, 16, encryptedSessionKey, 0, rsaKeyBytes);
-
-            byte[] encryptedMessage = new byte[data.length - headerLen];
-            System.arraycopy(data, headerLen, encryptedMessage, 0, encryptedMessage.length);
-
-            Cipher rsaCipher = Cipher.getInstance("RSA/ECB/PKCS1Padding");
-            rsaCipher.init(Cipher.DECRYPT_MODE, privateKey);
-            byte[] sessionKeyBytes = rsaCipher.doFinal(encryptedSessionKey);
             SecretKey sessionKey = new SecretKeySpec(sessionKeyBytes, "AES");
 
-            Cipher aesCipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
-            aesCipher.init(Cipher.DECRYPT_MODE, sessionKey, new IvParameterSpec(iv));
-            byte[] decryptedData = aesCipher.doFinal(encryptedMessage);
+            // ✅ AES/GCM para descriptografia
+            Cipher aesGcm = Cipher.getInstance("AES/GCM/NoPadding");
+            GCMParameterSpec gcmSpec = new GCMParameterSpec(128, ivBytes);
+            aesGcm.init(Cipher.DECRYPT_MODE, sessionKey, gcmSpec);
+            byte[] plain = aesGcm.doFinal(ciphertextBytes);
+            String result = new String(plain, "UTF-8");
 
-            return new String(decryptedData, "UTF-8");
+            // ✅ Verificação de integridade com SHA-256 (requisito I.c)
+            if (hashB64 != null) {
+                String calculated = hashWithSHA256(result);
+                if (!calculated.equals(hashB64)) {
+                    throw new SecurityException("Falha na verificação de integridade SHA-256");
+                }
+            }
 
-        } catch (IllegalArgumentException e) {
-            String dbg = "(debug) encryptedData length=" + (encryptedData != null ? encryptedData.length() : 0)
-                    + ", cleanedBase64=" + (encryptedData != null ? debugBase64(encryptedData) : "NULL");
-            throw new RuntimeException("Erro no formato Base64: " + e.getMessage() + " " + dbg, e);
+            return result;
+
         } catch (Exception e) {
-            String dbg = "(debug) encryptedData length=" + (encryptedData != null ? encryptedData.length() : 0)
-                    + ", cleanedBase64=" + (encryptedData != null ? debugBase64(encryptedData) : "NULL");
-            throw new RuntimeException("Erro na decriptação PGP: " + e.getMessage() + " " + dbg, e);
+            throw new RuntimeException("Erro na decriptação PGP: " + e.getMessage(), e);
         }
     }
 
@@ -490,13 +418,22 @@ public class CryptoService {
     public String hashWithSHA3_256(String data) throws NoSuchAlgorithmException {
         MessageDigest digest = MessageDigest.getInstance("SHA3-256");
         byte[] hash = digest.digest(data.getBytes());
-        return Base64.getEncoder().encodeToString(hash);
+        return bytesToHex(hash); // ✅ Retornar em hex para melhor legibilidade
     }
 
     public String hashWithSHA3_512(String data) throws NoSuchAlgorithmException {
         MessageDigest digest = MessageDigest.getInstance("SHA3-512");
         byte[] hash = digest.digest(data.getBytes());
-        return Base64.getEncoder().encodeToString(hash);
+        return bytesToHex(hash);
+    }
+
+    // ✅ Método utilitário para converter bytes para hex
+    private static String bytesToHex(byte[] bytes) {
+        StringBuilder result = new StringBuilder();
+        for (byte b : bytes) {
+            result.append(String.format("%02x", b));
+        }
+        return result.toString();
     }
 
     public String signData(String data, PrivateKey privateKey) throws Exception {
@@ -521,11 +458,9 @@ public class CryptoService {
 
         String cleaned = publicKeyStr.trim();
 
-        // Remove cabeçalhos PEM se existirem
+        // ✅ Suporta tanto PEM quanto Base64 puro
         if (cleaned.contains("-----BEGIN")) {
-            cleaned = cleaned.replaceAll("-----BEGIN [A-Z ]*KEY-----", "")
-                    .replaceAll("-----END [A-Z ]*KEY-----", "")
-                    .replaceAll("[\\r\\n\\s]", "");
+            cleaned = extractBase64FromPEM(cleaned);
         }
 
         try {
@@ -545,11 +480,9 @@ public class CryptoService {
 
         String cleaned = privateKeyStr.trim();
 
-        // Remove cabeçalhos PEM se existirem
+        // ✅ Suporta tanto PEM quanto Base64 puro
         if (cleaned.contains("-----BEGIN")) {
-            cleaned = cleaned.replaceAll("-----BEGIN [A-Z ]*KEY-----", "")
-                    .replaceAll("-----END [A-Z ]*KEY-----", "")
-                    .replaceAll("[\\r\\n\\s]", "");
+            cleaned = extractBase64FromPEM(cleaned);
         }
 
         byte[] keyBytes = Base64.getDecoder().decode(cleaned);
@@ -584,9 +517,14 @@ public class CryptoService {
         if (privateKeyStr == null)
             throw new IllegalArgumentException("Chave privada está vazia");
 
-        String cleaned = privateKeyStr.replaceAll("-----BEGIN [A-Z ]*KEY-----", "")
-                .replaceAll("-----END [A-Z ]*KEY-----", "")
-                .replaceAll("[\\r\\n\\s]", "");
+        String cleaned = privateKeyStr;
+
+        // ✅ Suporta tanto PEM quanto Base64 puro
+        if (cleaned.contains("-----BEGIN")) {
+            cleaned = extractBase64FromPEM(cleaned);
+        } else {
+            cleaned = cleaned.replaceAll("[\\r\\n\\s]", "");
+        }
 
         byte[] keyBytes = Base64.getDecoder().decode(cleaned);
         PKCS8EncodedKeySpec spec = new PKCS8EncodedKeySpec(keyBytes);
@@ -607,5 +545,37 @@ public class CryptoService {
 
     public byte[] stringToIv(String ivString) {
         return Base64.getDecoder().decode(ivString);
+    }
+
+    // ========================= Métodos auxiliares para compatibilidade
+    // =========================
+
+    /**
+     * Converte Base64 para PEM (para compatibilidade com frontend)
+     */
+    public String base64ToPEM(String base64Key, boolean isPublic) {
+        if (base64Key == null)
+            return null;
+        String cleanBase64 = base64Key.replaceAll("[\\r\\n\\s]", "");
+
+        if (isPublic) {
+            return "-----BEGIN PUBLIC KEY-----\n" +
+                    formatBase64PEM(cleanBase64) +
+                    "-----END PUBLIC KEY-----";
+        } else {
+            return "-----BEGIN PRIVATE KEY-----\n" +
+                    formatBase64PEM(cleanBase64) +
+                    "-----END PRIVATE KEY-----";
+        }
+    }
+
+    /**
+     * Verifica se uma string está em formato PEM
+     */
+    public boolean isPEMFormat(String keyString) {
+        if (keyString == null)
+            return false;
+        return keyString.trim().startsWith("-----BEGIN") &&
+                keyString.trim().contains("-----END");
     }
 }
