@@ -24,41 +24,32 @@ public class WebSocketController {
     /**
      * ✅ ENVIA MENSAGEM VIA WEBSOCKET - VERSÃO CORRIGIDA
      */
+    // No WebSocketController.java - Método corrigido
     @MessageMapping("/chat.sendMessage")
     public void sendMessage(@Payload Map<String, Object> messageData) {
         try {
             System.out.println("📨 Recebendo mensagem via WebSocket: " + messageData);
 
-            // ✅ EXTRAIR DADOS DA MENSAGEM
+            // ✅ EXTRAIR DADOS BÁSICOS
             Long senderId = Long.valueOf(messageData.get("senderId").toString());
             Long receiverId = Long.valueOf(messageData.get("receiverId").toString());
             String content = (String) messageData.get("content");
-            Boolean encrypted = Boolean.valueOf(messageData.getOrDefault("encrypted", "false").toString());
             Boolean signed = Boolean.valueOf(messageData.getOrDefault("signed", "false").toString());
-            String messageType = (String) messageData.getOrDefault("messageType", "TEXT");
-            String messageHash = (String) messageData.get("messageHash");
 
-            // ✅ CRIAR DTO DA MENSAGEM
+            // ✅ CRIAR DTO SIMPLES - BACKEND DECIDE CRIPTOGRAFIA
             MessageDTO messageDTO = new MessageDTO();
             messageDTO.setSenderId(senderId);
             messageDTO.setReceiverId(receiverId);
             messageDTO.setContent(content);
-            messageDTO.setEncrypted(encrypted);
             messageDTO.setSigned(signed);
-            messageDTO.setMessageType(messageType);
-            messageDTO.setMessageHash(messageHash);
+            messageDTO.setMessageType("TEXT");
 
-            // ✅ SALVAR NO BANCO (usar método apropriado baseado no tipo)
-            MessageDTO savedMessage;
-            if (encrypted) {
-                savedMessage = messageService.sendEncryptedMessage(messageDTO);
-            } else {
-                savedMessage = messageService.sendMessage(messageDTO);
-            }
+            // ✅ DELEGAR AO SERVICE (que decide automaticamente sobre criptografia)
+            MessageDTO savedMessage = messageService.sendEncryptedMessage(messageDTO);
 
-            System.out.println("✅ Mensagem salva no banco - ID: " + savedMessage.getId());
+            System.out.println("✅ Mensagem processada pelo backend - ID: " + savedMessage.getId());
 
-            // ✅ NOTIFICAR REMETENTE E DESTINATÁRIO
+            // ✅ NOTIFICAR AMBAS AS PARTES
             String senderDestination = "/topic/user/" + savedMessage.getSenderId() + "/messages";
             String receiverDestination = "/topic/user/" + savedMessage.getReceiverId() + "/messages";
 
@@ -73,7 +64,7 @@ public class WebSocketController {
 
             // ✅ ENVIAR ERRO PARA O REMETENTE
             try {
-                Long senderId = Long.valueOf(((Map<String, Object>) messageData).get("senderId").toString());
+                Long senderId = Long.valueOf(messageData.get("senderId").toString());
                 String errorDestination = "/topic/user/" + senderId + "/errors";
 
                 Map<String, Object> errorResponse = new HashMap<>();
@@ -83,8 +74,6 @@ public class WebSocketController {
                 errorResponse.put("timestamp", LocalDateTime.now().toString());
 
                 messagingTemplate.convertAndSend(errorDestination, errorResponse);
-
-                System.out.println("❌ Erro enviado para o remetente: " + senderId);
             } catch (Exception ex) {
                 System.err.println("❌ Erro ao enviar mensagem de erro: " + ex.getMessage());
             }
