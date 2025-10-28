@@ -23,14 +23,17 @@ public class CertificateService {
 
     private final CertificateRepository certificateRepository;
     private final UserRepository userRepository;
+    private final com.securemessaging.repository.CSRRepository csrRepository;
     private final CryptoService cryptoService;
 
     public CertificateService(CertificateRepository certificateRepository,
             UserRepository userRepository,
-            CryptoService cryptoService) {
+            CryptoService cryptoService,
+            com.securemessaging.repository.CSRRepository csrRepository) {
         this.certificateRepository = certificateRepository;
         this.userRepository = userRepository;
         this.cryptoService = cryptoService;
+        this.csrRepository = csrRepository;
     }
 
     public CertificateDTO generateRootCA(Long userId, CertificateRequest request) {
@@ -407,6 +410,31 @@ public class CertificateService {
         }
     }
 
+    public void deleteCertificate(Long certificateId, Long requestingUserId) {
+        try {
+            Certificate cert = certificateRepository.findById(certificateId)
+                    .orElseThrow(() -> new RuntimeException("Certificado não encontrado"));
+
+            // Permitir apagar apenas se o utilizador for o dono ou se for admin (cheque
+            // simplificado)
+            if (cert.getUser() == null || !cert.getUser().getId().equals(requestingUserId)) {
+                throw new RuntimeException("Permissão negada para apagar este certificado");
+            }
+
+            // Checar CSRs que referenciam este certificado como CA assinante
+            long referencingCsrs = csrRepository.countBySignedByCAId(certificateId);
+            if (referencingCsrs > 0) {
+                throw new RuntimeException(
+                        "Não é possível apagar o certificado: existem solicitações de assinatura referenciando esta CA ("
+                                + referencingCsrs + ")");
+            }
+
+            certificateRepository.deleteById(certificateId);
+        } catch (Exception e) {
+            throw new RuntimeException("Erro ao apagar certificado: " + e.getMessage(), e);
+        }
+    }
+
     // ✅ Método atualizado
     private CertificateDTO toDTO(Certificate cert) {
         if (cert == null)
@@ -421,6 +449,7 @@ public class CertificateService {
         dto.setPublicKey(cert.getPublicKey());
         dto.setSignature(cert.getSignature());
         dto.setSignatureAlgorithm(cert.getSignatureAlgorithm());
+        dto.setCertificateData(cert.getCertificateData());
         dto.setValidFrom(cert.getValidFrom());
         dto.setValidTo(cert.getValidTo());
         dto.setStatus(cert.getStatus().toString());
