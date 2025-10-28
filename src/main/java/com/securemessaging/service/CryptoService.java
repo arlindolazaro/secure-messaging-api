@@ -246,6 +246,31 @@ public class CryptoService {
         return keyGen.generateKeyPair();
     }
 
+    /**
+     * Gera par DH a partir de parâmetros p/g fornecidos (hex strings ou BigInteger)
+     */
+    public KeyPair generateDHKeyPairFromHex(String pHex, String gHex) throws Exception {
+        if (pHex == null || gHex == null) {
+            return generateDHKeyPair();
+        }
+
+        BigInteger p = new BigInteger(pHex, 16);
+        BigInteger g = new BigInteger(gHex, 16);
+
+        return generateDHKeyPairFromParams(p, g);
+    }
+
+    public KeyPair generateDHKeyPairFromParams(BigInteger p, BigInteger g) throws Exception {
+        KeyPairGenerator keyGen = KeyPairGenerator.getInstance("DH");
+
+        // SecureRandom
+        SecureRandom strongRnd = SecureRandom.getInstanceStrong();
+
+        DHParameterSpec dhParamSpec = new DHParameterSpec(p, g);
+        keyGen.initialize(dhParamSpec, strongRnd);
+        return keyGen.generateKeyPair();
+    }
+
     public byte[] generateDHSharedSecret(PrivateKey privateKey, PublicKey publicKey) throws Exception {
         KeyAgreement keyAgreement = KeyAgreement.getInstance("DH");
         keyAgreement.init(privateKey);
@@ -339,9 +364,47 @@ public class CryptoService {
                 throw new IllegalArgumentException("Dados criptografados é nulo");
             }
 
+            // Detect and strip PGP ASCII armor if present. The test simula armor with a
+            // header/footer and an optional "Version:" header. We need to extract the
+            // JSON payload between the armor boundaries or, if armor absent, use the
+            // original string.
+            String payload = encryptedData;
+            String trimmed = encryptedData.trim();
+            if (trimmed.startsWith("-----BEGIN PGP MESSAGE-----")) {
+                // Remove header/footer and any header lines like "Version: ...".
+                String[] lines = trimmed.split("\\r?\\n");
+                StringBuilder sb = new StringBuilder();
+                boolean inPayload = false;
+                for (String line : lines) {
+                    line = line.trim();
+                    if (line.isEmpty()) {
+                        // skip empty lines
+                        continue;
+                    }
+                    if (line.equals("-----BEGIN PGP MESSAGE-----")) {
+                        inPayload = true; // start scanning for payload after header
+                        continue;
+                    }
+                    if (line.startsWith("Version:")) {
+                        // skip version header
+                        continue;
+                    }
+                    if (line.equals("-----END PGP MESSAGE-----")) {
+                        break;
+                    }
+                    // If we reached here and still haven't seen the JSON open-brace,
+                    // assume the first lines after headers are the payload.
+                    sb.append(line);
+                }
+                String candidate = sb.toString().trim();
+                if (!candidate.isEmpty()) {
+                    payload = candidate;
+                }
+            }
+
             // ✅ Parsing consistente do JSON
             com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
-            com.fasterxml.jackson.databind.JsonNode node = mapper.readTree(encryptedData);
+            com.fasterxml.jackson.databind.JsonNode node = mapper.readTree(payload);
 
             if (!node.has("encryptedKey") || !node.has("iv") || !node.has("ciphertext")) {
                 throw new IllegalArgumentException("Formato PGP inválido - campos obrigatórios em falta");
@@ -412,6 +475,17 @@ public class CryptoService {
     public String hashWithSHA256(String data) throws NoSuchAlgorithmException {
         MessageDigest digest = MessageDigest.getInstance("SHA-256");
         byte[] hash = digest.digest(data.getBytes());
+        return Base64.getEncoder().encodeToString(hash);
+    }
+
+    /**
+     * Overload que calcula SHA-256 diretamente a partir de bytes.
+     * Retorna o hash em Base64 para manter compatibilidade com o restante do
+     * projeto.
+     */
+    public String hashWithSHA256(byte[] data) throws NoSuchAlgorithmException {
+        MessageDigest digest = MessageDigest.getInstance("SHA-256");
+        byte[] hash = digest.digest(data);
         return Base64.getEncoder().encodeToString(hash);
     }
 
