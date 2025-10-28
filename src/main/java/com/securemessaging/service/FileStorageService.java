@@ -67,7 +67,7 @@ public class FileStorageService {
      */
     public String calculateFileHash(byte[] fileBytes) throws Exception {
         // ✅ CORREÇÃO: Usar bytes diretamente para hash
-        return cryptoService.hashWithSHA256(Base64.getEncoder().encodeToString(fileBytes));
+        return cryptoService.hashWithSHA256(fileBytes);
     }
 
     /**
