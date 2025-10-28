@@ -1,6 +1,8 @@
 package com.securemessaging.controller;
 
 import com.securemessaging.dto.UserDTO;
+import com.securemessaging.dto.UserSettingsDTO;
+import jakarta.validation.Valid;
 import com.securemessaging.service.UserService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -179,6 +181,48 @@ public class UserController {
             return ResponseEntity.badRequest().body(Map.of(
                     "success", false,
                     "error", e.getMessage()));
+        }
+    }
+
+    @Operation(summary = "Obter definições do utilizador")
+    @GetMapping("/{userId}/settings")
+    public ResponseEntity<?> getUserSettings(@PathVariable Long userId) {
+        try {
+            String settings = userService.getUserSettings(userId);
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "settings", settings));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "success", false,
+                    "error", e.getMessage()));
+        }
+    }
+
+    @Operation(summary = "Atualizar definições do utilizador")
+    @PutMapping("/{userId}/settings")
+    public ResponseEntity<?> updateUserSettings(@PathVariable Long userId, @Valid @RequestBody UserSettingsDTO dto) {
+        try {
+            // basic validation passed, save raw JSON string
+            userService.updateUserSettings(userId, dto.getSettingsJson());
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "message", "Definições atualizadas"));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "success", false,
+                    "error", e.getMessage()));
+        }
+    }
+
+    @Operation(summary = "Eliminar conta do utilizador")
+    @DeleteMapping("/{userId}")
+    public ResponseEntity<?> deleteUser(@PathVariable Long userId) {
+        try {
+            userService.deleteUser(userId);
+            return ResponseEntity.ok(Map.of("success", true, "message", "Utilizador eliminado"));
+        } catch (Exception e) {
+            return ResponseEntity.status(400).body(Map.of("success", false, "error", e.getMessage()));
         }
     }
 
