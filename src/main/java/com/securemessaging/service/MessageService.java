@@ -293,7 +293,8 @@ public class MessageService {
     }
 
     @Transactional
-    public MessageDTO sendEncryptedImage(Long senderId, Long receiverId, MultipartFile imageFile) throws Exception {
+    public MessageDTO sendEncryptedImage(Long senderId, Long receiverId, MultipartFile imageFile, String clientFileHash)
+            throws Exception {
         User sender = userRepository.findById(senderId)
                 .orElseThrow(() -> new IllegalArgumentException("Remetente não encontrado"));
         User receiver = userRepository.findById(receiverId)
@@ -322,8 +323,14 @@ public class MessageService {
         rsaCipher.init(Cipher.ENCRYPT_MODE, receiverPublicKey);
         String encryptedFileKey = Base64.getEncoder().encodeToString(rsaCipher.doFinal(fileKey.getEncoded()));
 
-        // ✅ HASH do arquivo original para integridade
-        String fileHash = cryptoService.hashWithSHA256(Base64.getEncoder().encodeToString(fileBytes));
+        // ✅ HASH do arquivo original para integridade: usar hash do cliente se
+        // fornecido, senão calcular aqui
+        String fileHash;
+        if (clientFileHash != null && !clientFileHash.trim().isEmpty()) {
+            fileHash = clientFileHash;
+        } else {
+            fileHash = cryptoService.hashWithSHA256(fileBytes);
+        }
 
         Message message = new Message();
         message.setSender(sender);
@@ -548,8 +555,7 @@ public class MessageService {
         if (fileBytes == null || fileBytes.length == 0) {
             throw new IllegalArgumentException("Arquivo vazio ou inválido para cálculo de hash");
         }
-        String base64File = Base64.getEncoder().encodeToString(fileBytes);
-        return cryptoService.hashWithSHA256(base64File);
+        return cryptoService.hashWithSHA256(fileBytes);
     }
 
     private MessageDTO convertToDTO(Message msg) {
@@ -587,6 +593,28 @@ public class MessageService {
 
             String receiverDestination = "/topic/user/" + messageDTO.getReceiverId() + "/messages";
             messagingTemplate.convertAndSend(receiverDestination, messageDTO);
+
+            // Também enviar para a fila de usuário (destination /user/queue/messages)
+            // usando o username como principal, para garantir entrega a sessões
+            // específicas do usuário (ex.: múltiplas abas). O broker irá rotear
+            // para as sessões assinantes de /user/queue/messages.
+            try {
+                if (messageDTO.getReceiverUsername() != null) {
+                    messagingTemplate.convertAndSendToUser(
+                            messageDTO.getReceiverUsername(),
+                            "/queue/messages",
+                            messageDTO);
+                }
+
+                if (messageDTO.getSenderUsername() != null) {
+                    messagingTemplate.convertAndSendToUser(
+                            messageDTO.getSenderUsername(),
+                            "/queue/messages",
+                            messageDTO);
+                }
+            } catch (Exception ex) {
+                System.err.println("Aviso: falha ao enviar convertAndSendToUser: " + ex.getMessage());
+            }
         } catch (Exception e) {
             System.err.println("Erro ao enviar notificação WebSocket: " + e.getMessage());
         }
