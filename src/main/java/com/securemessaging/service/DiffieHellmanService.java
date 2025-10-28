@@ -3,8 +3,12 @@ package com.securemessaging.service;
 import org.springframework.stereotype.Service;
 
 import javax.crypto.SecretKey;
+import java.math.BigInteger;
 import java.security.*;
+import javax.crypto.interfaces.DHPrivateKey;
+import javax.crypto.interfaces.DHPublicKey;
 import java.security.spec.X509EncodedKeySpec;
+import javax.crypto.spec.DHParameterSpec;
 import java.util.Base64;
 import java.util.HashMap;
 import java.util.Map;
@@ -31,9 +35,44 @@ public class DiffieHellmanService {
         // Extrair parâmetros públicos
         byte[] publicKeyBytes = keyPair.getPublic().getEncoded();
 
+        // Tentar extrair p, g e valor público (y) para interoperabilidade com clientes
+        // JS/Node
+        String primeHex = null;
+        String generatorHex = null;
+        String publicYHex = null;
+        try {
+            java.security.PublicKey pub = keyPair.getPublic();
+            if (pub instanceof DHPublicKey) {
+                DHPublicKey dhPub = (DHPublicKey) pub;
+                DHParameterSpec params = dhPub.getParams();
+                if (params != null) {
+                    BigInteger p = params.getP();
+                    BigInteger g = params.getG();
+                    primeHex = p.toString(16);
+                    generatorHex = g.toString(16);
+                }
+
+                // Valor público (y)
+                try {
+                    BigInteger y = dhPub.getY();
+                    publicYHex = y.toString(16);
+                } catch (Exception ignore) {
+                    // ignore
+                }
+            }
+        } catch (Exception ignore) {
+            // Não essencial — retornamos pelo menos a chave pública X.509 em Base64
+        }
+
         Map<String, Object> result = new HashMap<>();
         result.put("sessionId", sessionId);
         result.put("publicKey", Base64.getEncoder().encodeToString(publicKeyBytes));
+        if (primeHex != null)
+            result.put("prime", primeHex);
+        if (generatorHex != null)
+            result.put("generator", generatorHex);
+        if (publicYHex != null)
+            result.put("publicKeyHex", publicYHex);
         result.put("algorithm", "DH");
         result.put("keySize", 1024);
         result.put("timestamp", System.currentTimeMillis());
@@ -136,5 +175,64 @@ public class DiffieHellmanService {
         cleanupSession((String) bob.get("sessionId"));
 
         return result;
+    }
+
+    /**
+     * Calcula segredo compartilhado quando o outro participante envia a chave
+     * pública em formato HEX (big integer hex).
+     * Isso torna possível interoperabilidade com clients que geram chaves DH como
+     * bigints (frontend util CryptoUtils).
+     */
+    public Map<String, Object> calculateSharedSecretFromRawHex(String sessionId, String otherPublicHex)
+            throws Exception {
+        KeyPair ourKeyPair = dhSessions.get(sessionId);
+        if (ourKeyPair == null) {
+            throw new RuntimeException("Sessão DH não encontrada: " + sessionId);
+        }
+
+        // Extrair parâmetros DH (p, g) e o expoente privado x
+        java.security.PublicKey pub = ourKeyPair.getPublic();
+        if (!(pub instanceof DHPublicKey)) {
+            throw new RuntimeException("Chave pública da sessão não é DH");
+        }
+
+        DHPublicKey ourPub = (DHPublicKey) pub;
+        DHPrivateKey ourPriv = (DHPrivateKey) ourKeyPair.getPrivate();
+
+        BigInteger p = ourPub.getParams().getP();
+        BigInteger x = ourPriv.getX();
+
+        // otherPublicHex é a representação hex do valor público (big integer)
+        BigInteger otherPub = new BigInteger(otherPublicHex, 16);
+
+        // Calcular segredo: otherPub^x mod p
+        BigInteger sharedBI = otherPub.modPow(x, p);
+        byte[] sharedSecret = sharedBI.toByteArray();
+
+        // Armazenar e derivar AES
+        sharedSecrets.put(sessionId, sharedSecret);
+
+        SecretKey aesKey = cryptoService.deriveAESKeyFromDHSecret(sharedSecret);
+
+        Map<String, Object> result = new HashMap<>();
+        result.put("sessionId", sessionId);
+        result.put("sharedSecret", Base64.getEncoder().encodeToString(sharedSecret));
+        result.put("aesKey", Base64.getEncoder().encodeToString(aesKey.getEncoded()));
+        result.put("success", true);
+        result.put("keyAlgorithm", "AES");
+        result.put("keySize", 128);
+
+        return result;
+    }
+
+    // Permite armazenar um segredo compartilhado pré-calculado sob um sessionId
+    public void storeSharedSecret(String sessionId, byte[] sharedSecret) {
+        if (sessionId == null || sharedSecret == null)
+            return;
+        sharedSecrets.put(sessionId, sharedSecret);
+    }
+
+    public boolean hasSharedSecret(String sessionId) {
+        return sharedSecrets.containsKey(sessionId);
     }
 }
