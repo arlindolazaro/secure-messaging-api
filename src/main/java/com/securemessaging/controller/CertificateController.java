@@ -234,6 +234,31 @@ public class CertificateController {
         }
     }
 
+    @Operation(summary = "Apagar certificado", description = "Apaga um certificado (apenas o dono pode apagar)")
+    @DeleteMapping("/{certificateId}")
+    public ResponseEntity<?> deleteCertificate(@PathVariable Long certificateId) {
+        try {
+            Long userId = extractUserIdFromAuth();
+            certificateService.deleteCertificate(certificateId, userId);
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "message", "Certificado apagado com sucesso",
+                    "certificateId", certificateId));
+        } catch (Exception e) {
+            e.printStackTrace();
+            String msg = e.getMessage() != null ? e.getMessage() : "Erro ao apagar certificado";
+            if (msg.contains("solicitações de assinatura") || msg.contains("referenciando esta CA")) {
+                return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of(
+                        "success", false,
+                        "error", msg));
+            }
+
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of(
+                    "success", false,
+                    "error", msg));
+        }
+    }
+
     @Operation(summary = "Certificados Root CA")
     @GetMapping("/roots")
     public ResponseEntity<?> getRootCertificates() {
