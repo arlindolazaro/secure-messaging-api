@@ -60,6 +60,9 @@ public interface MessageRepository extends JpaRepository<Message, Long> {
         // Buscar mensagens por hash (para verificação de integridade)
         Optional<Message> findByMessageHash(String messageHash);
 
+        // Buscar mensagem por hash de arquivo (para deduplicação de uploads)
+        Optional<Message> findByFileHash(String fileHash);
+
         // Contar mensagens não lidas
         @Query("SELECT COUNT(m) FROM Message m WHERE m.receiver = :receiver AND m.readAt IS NULL")
         long countUnreadMessagesByReceiver(@Param("receiver") User receiver);
