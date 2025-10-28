@@ -66,7 +66,9 @@ public class KeyManagementService {
             // Informações RSA - ✅ USANDO CAMPOS REAIS do User
             Map<String, Object> rsaInfo = new HashMap<>();
             rsaInfo.put("exists", user.getPublicKey() != null && !user.getPublicKey().trim().isEmpty());
-            rsaInfo.put("keySize", 1024); // Tamanho padrão do sistema
+            rsaInfo.put("keySize",
+                    user.getPublicKey() != null ? (user.getPublicKey().length() > 2000 ? 2048 : 1024) : 0); // heurística
+                                                                                                            // simples
             rsaInfo.put("algorithm", "RSA");
             rsaInfo.put("created",
                     user.getCreatedAt() != null ? user.getCreatedAt().toString() : LocalDateTime.now().toString());
@@ -76,7 +78,7 @@ public class KeyManagementService {
             // Informações Diffie-Hellman - ✅ USANDO CAMPOS REAIS do User
             Map<String, Object> dhInfo = new HashMap<>();
             dhInfo.put("exists", user.getDhPublicKey() != null && !user.getDhPublicKey().trim().isEmpty());
-            dhInfo.put("keySize", 1024); // Tamanho padrão para DH
+            dhInfo.put("keySize", user.getDhPublicKey() != null ? 2048 : 0);
             dhInfo.put("algorithm", "Diffie-Hellman");
             dhInfo.put("created",
                     user.getCreatedAt() != null ? user.getCreatedAt().toString() : LocalDateTime.now().toString());
@@ -104,7 +106,7 @@ public class KeyManagementService {
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
             response.put("message", "Diffie-Hellman configurado com sucesso");
-            response.put("keySize", 1024);
+            response.put("keySize", 2048);
             response.put("publicKey", user.getDhPublicKey() != null ? "Configurada" : "Não configurada");
             return response;
 
@@ -113,6 +115,41 @@ public class KeyManagementService {
             errorResponse.put("success", false);
             errorResponse.put("message", "Erro ao configurar Diffie-Hellman: " + e.getMessage());
             return errorResponse;
+        }
+    }
+
+    // Novo: permite configurar DH com parâmetros p/g em hex (opcional)
+    public Map<String, Object> setupDiffieHellmanWithParams(Long userId, String pHex, String gHex) {
+        try {
+            User user = userRepository.findById(userId)
+                    .orElseThrow(() -> new RuntimeException("Usuário não encontrado"));
+
+            KeyPair dhPair;
+            if (pHex != null && gHex != null) {
+                dhPair = cryptoService.generateDHKeyPairFromHex(pHex, gHex);
+            } else {
+                dhPair = cryptoService.generateDHKeyPair();
+            }
+
+            String dhPublic = cryptoService.publicKeyToPEM(dhPair.getPublic());
+            String dhPrivate = cryptoService.privateKeyToPEM(dhPair.getPrivate());
+
+            user.setDhPublicKey(dhPublic);
+            user.setDhPrivateKey(dhPrivate);
+            user.setDhPrimeModulus(pHex != null ? pHex : "");
+            user.setDhGenerator(gHex != null ? gHex : "");
+            userRepository.save(user);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("message", "Diffie-Hellman configurado");
+            response.put("publicKey", dhPublic != null ? "Configurada" : "Não configurada");
+            return response;
+        } catch (Exception e) {
+            Map<String, Object> error = new HashMap<>();
+            error.put("success", false);
+            error.put("message", "Erro ao configurar DH: " + e.getMessage());
+            return error;
         }
     }
 
