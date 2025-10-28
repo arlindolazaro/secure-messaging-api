@@ -27,6 +27,7 @@ public class CertificateDTO {
     private String email;
     private boolean isCA;
     private String keyUsage;
+    private String certificateData; // Base64 do certificado X.509 (DER)
 
     private LocalDateTime createdAt;
     private LocalDateTime revokedAt;
@@ -224,5 +225,13 @@ public class CertificateDTO {
 
     public void setKeyUsage(String keyUsage) {
         this.keyUsage = keyUsage;
+    }
+
+    public String getCertificateData() {
+        return certificateData;
+    }
+
+    public void setCertificateData(String certificateData) {
+        this.certificateData = certificateData;
     }
 }
