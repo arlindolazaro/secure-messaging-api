@@ -23,7 +23,8 @@ public class ImageController {
     public ResponseEntity<?> sendEncryptedImage(
             @RequestParam Long senderId,
             @RequestParam Long receiverId,
-            @RequestParam MultipartFile image) {
+            @RequestParam MultipartFile image,
+            @RequestParam(required = false) String fileHash) {
         try {
             if (image.isEmpty()) {
                 return ResponseEntity.badRequest().body(Map.of(
@@ -31,7 +32,7 @@ public class ImageController {
                         "error", "Imagem vazia"));
             }
 
-            var message = messageService.sendEncryptedImage(senderId, receiverId, image);
+            var message = messageService.sendEncryptedImage(senderId, receiverId, image, fileHash);
 
             return ResponseEntity.ok(Map.of(
                     "success", true,
