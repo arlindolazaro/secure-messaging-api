@@ -53,9 +53,17 @@ public class KeyManagementController {
 
     @Operation(summary = "Configurar Diffie-Hellman", description = "Configura parâmetros Diffie-Hellman para o utilizador")
     @PostMapping("/users/{userId}/setup-diffie-hellman")
-    public ResponseEntity<?> setupDiffieHellman(@PathVariable Long userId) {
+    public ResponseEntity<?> setupDiffieHellman(@PathVariable Long userId,
+            @RequestBody(required = false) Map<String, String> body) {
         try {
-            Map<String, Object> result = keyManagementService.setupDiffieHellman(userId);
+            String pHex = null;
+            String gHex = null;
+            if (body != null) {
+                pHex = body.get("pHex");
+                gHex = body.get("gHex");
+            }
+
+            Map<String, Object> result = keyManagementService.setupDiffieHellmanWithParams(userId, pHex, gHex);
             return ResponseEntity.ok(result);
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(Map.of(
