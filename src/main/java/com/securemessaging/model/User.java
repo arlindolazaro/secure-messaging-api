@@ -44,6 +44,9 @@ public class User {
     @Column(columnDefinition = "TEXT")
     private String certificate;
 
+    @Column(columnDefinition = "TEXT")
+    private String userSettings; // JSON string with user-specific settings
+
     private boolean enabled = true;
     private LocalDateTime createdAt;
     private LocalDateTime lastLogin;
@@ -215,5 +218,13 @@ public class User {
 
     public void setKeyPairs(List<KeyPair> keyPairs) {
         this.keyPairs = keyPairs;
+    }
+
+    public String getUserSettings() {
+        return userSettings;
+    }
+
+    public void setUserSettings(String userSettings) {
+        this.userSettings = userSettings;
     }
 }
