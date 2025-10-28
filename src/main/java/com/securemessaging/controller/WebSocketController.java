@@ -5,6 +5,10 @@ import com.securemessaging.service.MessageService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.messaging.handler.annotation.Payload;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Controller;
 
@@ -251,6 +255,26 @@ public class WebSocketController {
             System.out.println("🏓 Pong enviado para usuário: " + userId);
         } catch (Exception e) {
             System.err.println("❌ Erro ao processar ping: " + e.getMessage());
+        }
+    }
+
+    // ==================== ENDPOINT REST PARA ANUNCIAR ONLINE ====================
+    // Esta rota permite que o frontend notifique o servidor que este utilizador
+    // está online e o servidor retransmite o evento para todos os clientes
+    @PostMapping("/api/users/{userId}/announce-online")
+    @ResponseBody
+    public Map<String, Object> announceOnline(@PathVariable Long userId, @RequestBody Map<String, Object> body) {
+        try {
+            UserStatusEvent ev = new UserStatusEvent();
+            ev.setUserId(userId);
+            ev.setUsername((String) body.getOrDefault("username", ""));
+            ev.setOnline(true);
+
+            messagingTemplate.convertAndSend("/topic/users/online", ev);
+
+            return Map.of("success", true, "userId", userId);
+        } catch (Exception e) {
+            return Map.of("success", false, "error", e.getMessage());
         }
     }
 
