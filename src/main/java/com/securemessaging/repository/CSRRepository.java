@@ -23,4 +23,9 @@ public interface CSRRepository extends JpaRepository<CertificateSigningRequest, 
 
     @Query("SELECT COUNT(csr) FROM CertificateSigningRequest csr WHERE csr.user.id = :userId AND csr.status = 'PENDING'")
     long countPendingByUser(@Param("userId") Long userId);
+
+    // Conta CSRs que foram assinadas por uma determinada CA (referenciam
+    // Certificate.id)
+    @Query("SELECT COUNT(csr) FROM CertificateSigningRequest csr WHERE csr.signedByCA.id = :caId")
+    long countBySignedByCAId(@Param("caId") Long caId);
 }
