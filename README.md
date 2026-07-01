@@ -416,7 +416,7 @@ Este projeto está licenciado sob a [MIT License](LICENSE).
 
 **Arlindo Lázaro**
 - GitHub: [@arlindolazaro](https://github.com/arlindolazaro)
-- Email: seu-email@example.com
+- Email: arlindolazaro202@gmail.com
 
 ---
 
