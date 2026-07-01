@@ -26,23 +26,32 @@ public class UserService {
 
     @Autowired
     private UserRepository userRepository;
+    private final MessageRepository messageRepository;
 
-    @Autowired
-    private MessageRepository messageRepository;
+    private final com.securemessaging.repository.KeyPairRepository keyPairRepository;
 
-    @Autowired
-    private com.securemessaging.repository.KeyPairRepository keyPairRepository;
+    private final PasswordEncoder passwordEncoder;
 
-    @Autowired
-    private PasswordEncoder passwordEncoder;
+    private final CryptoService cryptoService;
 
-    @Autowired
-    private CryptoService cryptoService;
-
-    @Autowired
-    private DiffieHellmanService diffieHellmanService;
+    private final DiffieHellmanService diffieHellmanService;
 
     // ==================== REGISTO E GESTÃO DE CHAVES ====================
+
+    @Autowired
+    public UserService(UserRepository userRepository,
+                       MessageRepository messageRepository,
+                       com.securemessaging.repository.KeyPairRepository keyPairRepository,
+                       PasswordEncoder passwordEncoder,
+                       CryptoService cryptoService,
+                       DiffieHellmanService diffieHellmanService) {
+        this.userRepository = userRepository;
+        this.messageRepository = messageRepository;
+        this.keyPairRepository = keyPairRepository;
+        this.passwordEncoder = passwordEncoder;
+        this.cryptoService = cryptoService;
+        this.diffieHellmanService = diffieHellmanService;
+    }
 
     public User createUser(User user) {
         if (userRepository.existsByUsername(user.getUsername())) {
