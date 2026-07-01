@@ -15,6 +15,16 @@
 
 ---
 
+<div align="center">
+
+![SecureMessaging API Screenshot](./public/images/secure1.png)
+
+*Interface segura da API SecureMessaging com documentação Swagger*
+
+</div>
+
+---
+
 ## 📋 Visão Geral
 
 O **SecureMessaging API** é um backend robusto construído com Spring Boot que fornece:
